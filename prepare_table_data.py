@@ -13,7 +13,11 @@ import numpy as np
 from utils import get_entity_name_symbol_for_data_extraction
 from tqdm import tqdm
 
+import certifi
+import ssl
 
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+ssl_context.load_verify_locations(cafile='venv/lib/python3.10/site-packages/certifi/cacert.pem')
 
 def read_raw_data(data_path):
     if data_path.endswith('csv'):
@@ -35,6 +39,7 @@ def process_raw_data(orig_df, entity):
                                'Low': np.nan,
                                'Close': orig_df['CME INDEX'].to_list()})
     else:
+        orig_df = orig_df.rename(columns=lambda x:x.strip())
         date_col = [x for x in orig_df.columns if x.strip().lower() in ['time', 'date']][0]
         close_price_col = [x for x in orig_df.columns if x.strip().lower() in ['close', 'price', 'last']][0]
         vol_col_list = [x for x in orig_df.columns if 'vol' in x.lower()]
@@ -45,7 +50,7 @@ def process_raw_data(orig_df, entity):
         else:
             vol_data = np.nan
         new_df = pd.DataFrame({'Name': entity['name'],
-                               'Symbol': "",
+                               'Symbol': entity['symbol'],
                                'Date': orig_df[date_col].to_list(),
                                'Open': orig_df['Open'].to_list(),
                                'High': orig_df['High'].to_list(),
@@ -57,22 +62,84 @@ def process_raw_data(orig_df, entity):
     return new_df
 
 
-def process_downloaded_data(entity):
-    if entity['data_source'] == 'investing_local':
-        data_dir = './data/raw/investing/'
-        all_data_files = os.listdir(data_dir)
-        data_file = [x for x in all_data_files if entity['name'].lower() in x.lower()][0]
-        data_path = os.path.join(data_dir, data_file)
-    elif entity['name'] == 'Feeder Cattle Cash Index' and entity['data_source'] == 'barchart_local':
-        data_path = './data/raw/barchart_feeder_cattle.csv'
-    elif entity['name'] == 'Lean Hog Cash Index' and entity['data_source'] == 'cme_local':
-        data_path = './data/raw/cme_lean_hog.xls'
-    else:
-        raise "Invalid entity!"
+def get_future_name():
+    find_month_for_report_date_future(future_asset, date_string, expire_month)
 
+def process_dairy_future_data(dairy_future_data_path):
+    df = pd.read_csv(dairy_future_data_path)
+    df['name'] = df.apply()
+
+
+def get_file_path(entity):
+    if entity['name'] == 'Silver':
+        data_path = './data/raw/investing/Silver Futures Historical Data.csv'
+
+    elif entity['data_source'] == 'investing_local':
+        if "Second" in entity["name"]:
+            data_dir = './data/raw/investing/second_month'
+        elif "Third" in entity["name"]:
+            data_dir = './data/raw/investing/third_month'
+
+        if "Chicago SRW Wheat Future" in entity['name']:
+            fname = "US Wheat Futures Historical Data.csv"
+        elif "KC HRW Wheat Future" in entity['name']:
+            fname = "Hard Red Winter Wheat Futures Historical Data.csv"
+        else:
+            pattern = r"((?:US )?(?:[\w\s]+)) Future \((Second|Third) Month\)"
+            replacement = r"\1 Futures Historical Data.csv"
+            fname = re.sub(pattern, replacement, entity['name'], flags=re.IGNORECASE)
+            if any([us_agriculture in entity['name'] for us_agriculture in ['Corn', 'Soybean']]): fname = 'US ' + fname
+
+        data_path = os.path.join(data_dir, fname)
+
+    elif entity['data_source'] == 'wsj_local':
+        data_dir = './data/raw/wsj/'
+        pattern = r"United States (\d+)-Year Bond Yield"
+        replacement = r"us_\1_year_bond_yield.csv"
+        fname = re.sub(pattern, replacement, entity['name'], flags=re.IGNORECASE)
+        data_path = os.path.join(data_dir, fname)
+
+    elif entity['data_source'] == 'barchart_local' and entity['name'] == 'Feeder Cattle Cash Index' :
+        data_path = './data/raw/barchart_feeder_cattle.csv'
+
+    elif entity['data_source'] == 'barchart_local' and 'Milk' in entity['name']:
+        process_dairy_future_data('./data/raw/barchart_dairy_futures.csv', entity)
+        data_path = entity['name'] + '.csv'
+
+    elif entity['name'] == 'Lean Hog Cash Index' and entity['data_source'] == 'cme_local':
+        data_path = './data/raw/cme/cme_lean_hog.xls'
+
+    else:
+        raise f"Invalid entity {entity['name']}"
+
+    return data_path
+
+
+def process_investing_futures_file_name(fdir, month_name:str):
+    if not os.path.exists(fdir):
+        print(f"Directory {fdir} does not exist.")
+        return
+
+    # Iterate over all files in the directory
+    for filename in os.listdir(fdir):
+        # Check if the file is a CSV
+        if filename.endswith(".csv"):
+            # Construct the new filename
+            new_filename = filename.replace(".csv", f" {month_name}.csv")
+
+            # Construct full file paths
+            old_file = os.path.join(fdir, filename)
+            new_file = os.path.join(fdir, new_filename)
+
+            # Rename the file
+            os.rename(old_file, new_file)
+            print(f"Renamed: {filename} -> {new_filename}")
+
+
+def process_downloaded_data(entity):
+    data_path = get_file_path(entity)
     data_df = read_raw_data(data_path)
     data_df = process_raw_data(data_df, entity)
-
     data_df.to_csv(output_path, mode='a', header=not os.path.exists(output_path), index=False)
 
 

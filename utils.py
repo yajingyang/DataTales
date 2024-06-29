@@ -38,7 +38,7 @@ def get_future_symbol(asset_code, future_month, future_year):
 
 def find_month_for_report_date_future(future_asset, date_string, expire_month):
     expire_month_list = ['front month', 'second month', 'third month']
-    assert expire_month in expire_month_list, "Invalid expiring month! "
+    assert expire_month.lower() in expire_month_list, "Invalid expiring month! "
     month_map = {month: index for index, month in enumerate(calendar.month_name) if month}
 
     month_list = future_month_map[future_asset].split(',')
@@ -53,7 +53,7 @@ def find_month_for_report_date_future(future_asset, date_string, expire_month):
             expire_front_month_num = coming_month_num[0] if len(coming_month_num) > 0 else month_num_list[0]
         except:
             print()
-        expire_month_index = month_num_list.index(expire_front_month_num) + expire_month_list.index(expire_month)
+        expire_month_index = month_num_list.index(expire_front_month_num) + expire_month_list.index(expire_month.lower())
         if expire_month_index >= len(month_list):
             expire_month_index = expire_month_index - len(month_list)
             future_year_name = str(int(future_year_name) + 1)
@@ -75,7 +75,7 @@ def get_entity_name_symbol_for_data_extraction(row):
     name_symbol_list = []
 
     match_future = re.match("(.*) \((.*)\)", row['name'])
-    if match_future:
+    if match_future and row['data_source'] == 'barchart_local':
         asset_name, expire_month = match_future.group(1), match_future.group(2)
         future_year_month_list = find_month_year_list_for_future_data_extraction(asset_name, 19, 23)
         for future_year_name, future_month_name in future_year_month_list:

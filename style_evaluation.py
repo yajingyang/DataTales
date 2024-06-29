@@ -75,3 +75,6 @@ def load_results_and_evaluate(model_name_str, historical_postfix, is_finetuned, 
                                     context_length=context_length)
     except Exception as e:
         print(e)
+
+if __name__ == '__main__':
+    load_results_and_evaluate(model_name_str, historical_postfix, is_finetuned, context_length)
