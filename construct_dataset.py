@@ -1,14 +1,16 @@
 import os
 import json
 import pandas as pd
-from utils import get_future_symbol, find_future_month
-
+from utils import get_future_symbol, find_month_for_report_date_future
+import re
+from tqdm import tqdm
+from datetime import datetime
 
 def get_entity_name_symbol(row):
     match_future = re.match("(.*) \((.*)\)", row['name'])
     if match_future:
         asset_name, expire_month = match_future.group(1), match_future.group(2)
-        future_year_name, future_month_name = find_future_month(asset_name, date_string, expire_month)
+        future_year_name, future_month_name = find_month_for_report_date_future(asset_name, date_string, expire_month)
         asset_code = row['symbol'].strip()
         symbol = get_future_symbol(asset_code, future_month_name, future_year_name)
         name = f"{row['name']} ({future_month_name})"
@@ -76,11 +78,11 @@ def update_json_with_new_items(json_path, new_items):
 
 
 def extract_table_data_single_entity(entity_ref_row, report_date, historical_data_process_func):
-    entity_name, entity_row = get_entity_name_symbol(entity_ref_row)
+    entity_name, entity_symbol = get_entity_name_symbol(entity_ref_row)
 
     report_date_with_time = datetime.strptime(f"{report_date.year}-{report_date.month}-{report_date.day} 23:59:59", "%Y-%m-%d %H:%M:%S")
-    mask = (df_source['Date'] <= report_date_with_time) & (df_source['Symbol'] == symbol)
-    df_table_single_entity_selected_period = df_table[mask]
+    mask = (table_df['Date'] <= report_date_with_time) & (table_df['Symbol'] == entity_symbol)
+    df_table_single_entity_selected_period = table_df[mask]
     df_table_single_entity_selected_period = historical_data_process_func(df_table_single_entity_selected_period)
     df_table_single_entity_selected_period = df_table_single_entity_selected_period.sort_values(by='Date', ascending=True)
 
@@ -101,13 +103,13 @@ def extract_table_data_of_required_period():
 
     market_list = report_df['source'].unique().tolist()
 
-    for report_row in tqdm(report_df.iterrows()):
-        market_output_dir = make_table_output_dir(row['market'])
-        selected_ref_df = ref_df[ref_df['market'] == row['market']]
-        report_date = row['Date']
+    for _, report_row in tqdm(report_df.iterrows()):
+        market_output_dir = make_table_output_dir(report_row['market'])
+        selected_ref_df = ref_df[ref_df['market'] == report_row['market']]
+        report_date = datetime.strptime(report_row['date'], '%Y-%m-%d')
 
         df_list = []
-        for entity_ref_row in selected_ref_df.iterrows():
+        for _, entity_ref_row in selected_ref_df.iterrows():
             df_table_single_entity = extract_table_data_single_entity(entity_ref_row, report_date, historical_data_process_func)
             df_list.append(df_table_single_entity)
         df_table_single_report = pd.concat(df_list)
@@ -115,7 +117,6 @@ def extract_table_data_of_required_period():
         date_str = pd.to_datetime(report_date).strftime("%Y-%m-%d")
         table_output_path = os.path.join(market_output_dir, f"{date_str}.csv")
         df_table_single_report.to_csv(table_output_path, index=False)
-
 
 
 def get_table_data_string_for_report(market, date_str):
@@ -164,7 +165,7 @@ def get_prompts_for_all_market():
         print('Invalid example setting. Skipping example...')
 
     market_specific_prompt_dict = {}
-    for report_row in df_report.iterrows():
+    for _, report_row in df_report.iterrows():
         if (report_row['market'], report_row['source']) not in market_specific_prompt_dict.keys():
             df_examples_market = df_examples[
                 (df_examples['market'] == report_row['market']) & (df_examples['source'] == report_row['source'])]
@@ -195,7 +196,7 @@ def prepare_dataset(include_example_as='report_sample'):
         df_split_ref_selected = df_split_ref[df_split_ref['split'] == data_split]
         df_report_split = df_split_ref_selected.merge(table_df, on=['source', 'market', 'date'])
 
-        for report_row in tqdm(df_report_split.iterrows()):
+        for _, report_row in tqdm(df_report_split.iterrows()):
             report_generation_prompts = market_specific_prompt_dict[(report_row['market'], report_row['source'])]
 
             cur_date_str = pd.to_datetime(example_row['Date']).strftime("%Y-%m-%d")
@@ -223,7 +224,7 @@ def format_llm_input(example) -> dict:
 
 
 def prepare_single_tokenized_dataset(tokenizer, config, historical_data_offset_period, output_data_dir, data_split, max_seq_length, max_output_length, skip_overlength):
-    input_data_path = os.path.join(, historical_data_offset_period, f"{data_split}.json")
+    input_data_path = os.path.join(output_data_dir, historical_data_offset_period, f"{data_split}.json")
     output_data_path = os.path.join(tokenized_dataset_with_prompt_output_dir, data_split)
 
     with open(input_data_path, 'r', encoding='utf-16') as f:
@@ -246,7 +247,7 @@ def prepare_single_tokenized_dataset(tokenizer, config, historical_data_offset_p
     dataset.save_to_disk(output_data_path)
 
 
-def tokenize_dataset():
+def tokenize_dataset(model_name, max_length, skip_overlength, max_output_length):
     model_name_str = model_name.split('/')[-1]
     tokenized_dir = os.path.join(tokenized_dataset_with_prompt_output_dir, model_name_str)
     if not os.path.exists(tokenized_dir):
@@ -274,13 +275,14 @@ def tokenize_dataset():
 
 
 if __name__ == '__main__':
-    historical_data_offset_period = '1weeks'
+    historical_data_offset_period = '3months'
     data_dir = "data"
 
-    report_path = os.path.join(data_dir, "reports.tsv")
+    report_path = os.path.join(data_dir, 'reports', "reports.tsv")
     report_df = load_tsv_data(report_path)
     all_table_data_path = os.path.join(data_dir, "all_table_data.csv")
     table_df = pd.read_csv(all_table_data_path)
+    table_df['Date'] = pd.to_datetime(table_df['Date'], format='%Y-%m-%d')
 
     table_data_output_dir = os.path.join(data_dir, "table_data")
     dataset_with_prompt_output_dir = os.path.join(data_dir, "processed")
@@ -292,9 +294,9 @@ if __name__ == '__main__':
 
     source_refs = load_source_ref_data()
     extract_table_data_of_required_period()
-    prepare_dataset()
+    # prepare_dataset()
 
-    MAX_LENGTH = 4096
-    tokenize_dataset(model_name="daryl149/llama-2-7b-chat-hf", max_length=MAX_LENGTH, skip_overlength=True,
-                              max_output_length=512)
+    # MAX_LENGTH = 4096
+    # tokenize_dataset(model_name="daryl149/llama-2-7b-chat-hf", max_length=MAX_LENGTH, skip_overlength=True,
+    #                           max_output_length=512)
 

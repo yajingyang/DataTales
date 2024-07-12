@@ -13,11 +13,11 @@ import numpy as np
 from utils import get_entity_name_symbol_for_data_extraction
 from tqdm import tqdm
 
-import certifi
-import ssl
+# import certifi
+# import ssl
 
-ssl_context = ssl.create_default_context(cafile=certifi.where())
-ssl_context.load_verify_locations(cafile='venv/lib/python3.10/site-packages/certifi/cacert.pem')
+# ssl_context = ssl.create_default_context(cafile=certifi.where())
+# ssl_context.load_verify_locations(cafile='venv/lib/python3.10/site-packages/certifi/cacert.pem')
 
 def read_raw_data(data_path):
     if data_path.endswith('csv'):
@@ -100,10 +100,10 @@ def get_file_path(entity):
         data_path = os.path.join(data_dir, fname)
 
     elif entity['data_source'] == 'barchart_local' and entity['name'] == 'Feeder Cattle Cash Index' :
-        data_path = './data/raw/barchart_feeder_cattle.csv'
+        data_path = './data/raw/barchart/barchart_feeder_cattle.csv'
 
     elif entity['data_source'] == 'barchart_local' and 'Milk' in entity['name']:
-        process_dairy_future_data('./data/raw/barchart_dairy_futures.csv', entity)
+        process_dairy_future_data('./data/raw/barchart/barchart_dairy_futures.csv', entity)
         data_path = entity['name'] + '.csv'
 
     elif entity['name'] == 'Lean Hog Cash Index' and entity['data_source'] == 'cme_local':

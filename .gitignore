@@ -1,0 +1,4 @@
+data/raw/*
+data/table_data/*
+data/processed/*
+data/all_table_data.csv
