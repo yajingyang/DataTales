@@ -1,0 +1,6 @@
+data/table_data/report_table_data/*
+data/table_data/raw/*
+data/table_data/intermediate/*
+data/processed_dataset/*
+data/tokenized_dataset/*
+.venv
